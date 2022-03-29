@@ -1,0 +1,53 @@
+#+TITLE: DatalogUI.dev
+#+PROPERTY: header-args :tangle "src/datalogui-demo.test.ts"
+
+* A declarative approach to state management
+#+begin_src typescript
+import * as datalog from '@datalogui/datalog'
+#+end_src
+
+* Problem Statement
+* Existing Solutions
+** Redux
+*** The Good parts
+*** The lacking
+** Observables
+*** The Good parts
+*** The lacking
+* DatalogUI
+** Goals
+** How
+** Bugs
+** Future work
+* Examples
+#+begin_src typescript
+test("Hello World", () => {
+  // Build our data tables
+  const Greetings = datalog.intoTable([
+    { language: "en", greeting: "Hello" },
+    { language: "es", greeting: "Hola" }
+    // ...
+  ])
+  const Nouns = datalog.intoTable([
+    { language: "en", noun: "world" },
+    { language: "es", noun: "todos" }
+    // ...
+  ])
+
+  // Query our data for English Greetings
+  const GreetingQuery = datalog.query<{ greeting: string, noun: string }>(({ greeting, noun }) => {
+    Greetings({ language: 'en', greeting })
+    Nouns({ language: 'en', noun })
+  })
+
+
+  expect(
+    GreetingQuery.view().readAllData()
+  ).toEqual(
+    [{ greeting: 'Hello', noun: 'world' }]
+  )
+})
+#+end_src
+
+
+something
