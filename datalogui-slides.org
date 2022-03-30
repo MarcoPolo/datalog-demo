@@ -1,4 +1,5 @@
 #+TITLE: [[https://datalogui.dev][DatalogUI.dev]]
+#+date: 2022 Apr 29
 #+PROPERTY: header-args :tangle "src/datalogui-demo.test.ts" :session test-file
 
 * A declarative approach to state management
@@ -9,7 +10,9 @@ import * as datalogUI from '@datalogui/datalog'
 * Problem Statement
 ** Most apps are simply UIs on to of a Database
 *** Facebook App
+- Query of posts sorted by a specialized rank
 *** Chat
+- A query of messages from a specific group
 *** Keybase
 - Do you follow this person?
 - Have their proofs changed?
@@ -72,7 +75,7 @@ That's it. That’s really all we need from a data management library. It needs 
 *** Declarative Queries
 DatalogUI provides a way to query data with syntax inspired by Datalog. If you’re unfamiliar with Datalog or other logic programming languages, it’ll feel strange at first, but after a couple examples it’ll feel natural.
 **** Examples
-*****  Define a Table
+***** Define a Table
 #+begin_src typescript
 const People = datalogUI.intoTable([
     { firstName: "Marco", lastName: "Munizaga" },
@@ -264,6 +267,8 @@ And now we'll remove Jamie from the table.
  - Notice how this doesn't result in any new data since Jamie's departure doesn't affect the query.
 #+begin_src typescript
 People.retract({firstName: "Jamie", lastName: "Brandon"})
+Query.runQuery()
+
 expect(
     queryView.recentData()
 ).toEqual(
@@ -297,7 +302,7 @@ type Users = Record<UserID, {
     youFollow: bool,
 }>
 
-type ChatChannel = Record<UserID, {
+type ChatChannel = Record<ChatID, {
     users: Array<UserID>,
     messages: Array<MessageID>
 }>
@@ -487,8 +492,7 @@ test("bacon numbers", () => {
                         NextActor: Actor,
                         BaconNumber,
                         CurrentBaconNumber,
-                    } = recent
-Datum.datum
+                    } = recentDatum.datum
 
                     if (CurrentBaconNumber > BaconNumber + 1) {
                         // We found a smaller bacon number. Let's swap out the datum
@@ -523,10 +527,15 @@ Datum.datum
 
 ** Bugs
 - ~.not~ queries can be finicky
-- ~.implies~ can be confusing (and may have bugs)
+- ~.implies~ can be confusing (and has bugs)
 
 ** Future work
 - Replace core with [[http://github.com/jamii/dida][dida]]
   - Faster
   - Probably more correct
-- Add helpers to render Ui components directly (Drop React)
+- Add helpers to render UI components directly (Drop React)
+
+* Thanks for watching!
+ - email: ~marco at marcopolo.io~
+ - https://marcopolo.io
+ - Keybase: @marcopolo

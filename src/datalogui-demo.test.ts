@@ -114,6 +114,8 @@ expect(
 )
 
 People.retract({firstName: "Jamie", lastName: "Brandon"})
+Query.runQuery()
+
 expect(
     queryView.recentData()
 ).toEqual(
