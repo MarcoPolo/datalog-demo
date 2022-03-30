@@ -1,53 +1,532 @@
-#+TITLE: DatalogUI.dev
-#+PROPERTY: header-args :tangle "src/datalogui-demo.test.ts"
+#+TITLE: [[https://datalogui.dev][DatalogUI.dev]]
+#+PROPERTY: header-args :tangle "src/datalogui-demo.test.ts" :session test-file
 
 * A declarative approach to state management
 #+begin_src typescript
-import * as datalog from '@datalogui/datalog'
+import * as datalogUI from '@datalogui/datalog'
 #+end_src
 
 * Problem Statement
+** Most apps are simply UIs on to of a Database
+*** Facebook App
+*** Chat
+*** Keybase
+- Do you follow this person?
+- Have their proofs changed?
+- Which Git repos do you know about? Can you delete them?
+*** Maps
+A query on some location indexed database
+** A significant amount of frontend work is transforming data from one structure into another.
+With this recurring pattern, surely we've come up with better tools for this right?
+
 * Existing Solutions
+There are as many solutions to this problem as their are UI frameworks, but I’ll review the most commonly used solutions.
 ** Redux
-*** The Good parts
+*** The good parts
+- Application state is updated by dispatching messages (actions).
+- State is readonly when rendering the app.
+- Single source of truth. All state is in one object.
+
+(for more info, see [[https://redux.js.org/understanding/thinking-in-redux/three-principles][Redux’s Three Principles]])
 *** The lacking
+- You have to manually go from the state object into the data the component needs to render.
+- If you’re not careful, you’ll spend a lot of wasted time re-rendering data that hasn’t changed. Even if your view layer (React) doesn’t actually mutate the DOM, you still paid for rendering/diffing that vdom.
 ** Observables
-*** The Good parts
+This is a category of many different implementations such as:
+[[https://github.com/ReactiveX/RxJava][- RXJava]] (and friends)
+[[https://www.solidjs.com][- SolidJS]]
+[[https://developer.android.com/jetpack/compose][- Jetpack Compose]]
+[[https://developer.apple.com/documentation/swiftui/state-and-data-flow][- SwiftUI]]
+[[https://github.com/MarcoPolo/android-wired][- Android Wired]]
+
+The gist is that you keep state in some variable that provides an Observable interface (subscribers can be notified when the value changes). UI Components use that variable and observe it when it changes. You can create new Observable from other observables.
+
+*** The good parts
+- You can be efficient with state updates. A component can update only when the state it cares about changes.
+- Composing observables means you can re-use observables to create other observables. This creates a DAG of values (and computation) that gets updated when input values change.
 *** The lacking
+- Transforming data is still manual. It’s not declarative.
+  - Example: I want to display a list of users I follow, along with their full name:
+    #+begin_src typescript :tangle no
+    const me = Observable() // some state observable representing me
+    const usersIFollow = me.follows
+    const followingFullNames = users
+        .filter(u => usersIFollow.contains(u))
+        .map(u => u.fullName)
+    // ... render followingFullNames
+    #+end_src
+- Can lead to recomputing the same or similar values from scratch.
+  Consider that in the previous example if I follow someone new the whole computation of filter/map gets rerun.
+
+We could do better.
 * DatalogUI
+Doing better
 ** Goals
+1. Declaratively query the data you need
+2. Efficient updates
+
+That's it. That’s really all we need from a data management library. It needs to help us manage state, and it needs to be fast.
+
+/quick aside, once you have these two things, building a UI on top is relatively simple. You can ~map~ the data values into some UI component (a ~div~, a native widget, etc)./
 ** How
-** Bugs
-** Future work
-* Examples
+*** Declarative Queries
+DatalogUI provides a way to query data with syntax inspired by Datalog. If you’re unfamiliar with Datalog or other logic programming languages, it’ll feel strange at first, but after a couple examples it’ll feel natural.
+**** Examples
+*****  Define a Table
 #+begin_src typescript
-test("Hello World", () => {
-  // Build our data tables
-  const Greetings = datalog.intoTable([
-    { language: "en", greeting: "Hello" },
-    { language: "es", greeting: "Hola" }
+const People = datalogUI.intoTable([
+    { firstName: "Marco", lastName: "Munizaga" },
+    { firstName: "Jamie", lastName: "Brandon" },
     // ...
-  ])
-  const Nouns = datalog.intoTable([
-    { language: "en", noun: "world" },
-    { language: "es", noun: "todos" }
-    // ...
-  ])
+])
+#+end_src
+***** Everyone's name
 
-  // Query our data for English Greetings
-  const GreetingQuery = datalog.query<{ greeting: string, noun: string }>(({ greeting, noun }) => {
-    Greetings({ language: 'en', greeting })
-    Nouns({ language: 'en', noun })
-  })
+#+begin_src typescript
+test("Give me everyone's first name", () => {
+    const Query = datalogUI.query(({ firstName }: { firstName: string }) => {
+        People({ firstName })
+    })
 
-
-  expect(
-    GreetingQuery.view().readAllData()
-  ).toEqual(
-    [{ greeting: 'Hello', noun: 'world' }]
-  )
+    expect(
+        Query.view().readAllData()
+    ).toEqual(
+        [{ firstName: "Jamie" }, { firstName: "Marco" }]
+    )
 })
 #+end_src
 
 
-something
+***** Only some people's name
+#+begin_src typescript
+test("Only Munizagas", () => {
+    const Query = datalogUI.query(({ firstName }: { firstName: string }) => {
+        People({ firstName, lastName: "Munizaga" })
+    })
+
+    expect(
+        Query.view().readAllData()
+    ).toEqual(
+        [{ firstName: "Marco" }]
+    )
+})
+#+end_src
+***** A simple Join
+****** Start test scope
+#+begin_src typescript
+test("A simple join", () => {
+#+end_src
+****** Define our tables
+#+begin_src typescript
+// Build our data tables
+const Greetings = datalogUI.intoTable([
+    { language: "en", greeting: "Hello" },
+    { language: "es", greeting: "Hola" }
+    // ...
+])
+const Nouns = datalogUI.intoTable([
+    { language: "en", noun: "world" },
+    { language: "es", noun: "todos" }
+    // ...
+])
+#+end_src
+****** Run our query that joins ~Greetings~ and ~Nouns~, and returns only English words.
+#+begin_src typescript
+// Query our data for English Greetings
+const GreetingQuery = datalogUI.query(({ greeting, noun }: { greeting: string, noun: string }) => {
+    Greetings({ language: 'en', greeting })
+    Nouns({ language: 'en', noun })
+})
+
+expect(
+    GreetingQuery.view().readAllData()
+).toEqual(
+    [{ greeting: 'Hello', noun: 'world' }]
+)
+#+end_src
+****** Close test scope
+#+begin_src typescript
+})
+#+end_src
+#+end_comment
+
+
+*** Efficient Updates
+The special thing about DatalogUI is that it works off of differences. When you run a query, it doesn't run the query over the whole dataset every time. It only runs the query on new data.
+
+Let's see an example
+**** Examples
+***** Recent Person
+****** Start test scope
+#+begin_src typescript
+test("Efficient Updates examples", () => {
+#+end_src
+****** A familiar Query
+Let's use our query from before that finds everyone's first name.
+#+begin_src typescript
+const Query = datalogUI.query(({ firstName }: { firstName: string }) => {
+    People({ firstName })
+})
+
+const queryView = Query.view()
+
+expect(
+    queryView.readAllData()
+).toEqual(
+    [{ firstName: "Jamie" }, { firstName: "Marco" }]
+)
+#+end_src
+
+****** A new challenger approaches
+Now we'll add a new person to our table. To do that we ~assert~ a new datum into the table.
+#+begin_src typescript
+People.assert({ firstName: "Frank", lastName: "McSherry" })
+#+end_src
+****** Check recent data
+We've asserted a new person, so now let's look at the latest data from the query:
+#+begin_src typescript
+expect(
+    queryView.recentData()
+).toEqual(
+    null // ??
+)
+#+end_src
+
+Hang on, why is that null?
+
+
+****** Lazy queries
+Queries won't update themselves unless asked to. This is a feature!
+    - (e.g. avoid computation when you need to finish drawing a frame, but run it when you have spare time)
+
+So let's try again and ask the query to process updates.
+#+begin_src typescript
+Query.runQuery()
+
+expect(
+    queryView.recentData()
+).toEqual(
+    [{ "datum": { "firstName": "Frank" }, "kind": datalogUI.Added }]
+)
+#+end_src
+
+We can tell the query to process updates automatically by hooking up the Query's change callback to run the query.
+#+begin_src typescript :tangle no
+Query.onDependencyChange(() => Query.runQuery())
+#+end_src
+
+****** Exit stage left
+It's useful to add new datums, but it's arguably just as useful to remove datums. We can do this with ~retract~
+#+begin_src typescript
+People.retract({firstName: "Frank", lastName: "McSherry"})
+
+Query.runQuery()
+expect(
+    queryView.recentData()
+).toEqual(
+    [{ "datum": { "firstName": "Frank" }, "kind": datalogUI.Removed }]
+)
+#+end_src
+
+****** End test scope
+#+begin_src typescript
+})
+#+end_src
+
+***** Only Munizagas
+When you add/remove some data, queries will run just on that new data, rather than the complete set of data. If we removed Jamie from People, it shouldn't affect the "All Munizagas" query.
+
+- This intuitively makes sense.
+- Joins are hard.
+- DatalogUI does the hard stuff for you. You write queries.
+
+****** Start test scope
+#+begin_src typescript
+test("Only Munizagas 2", () => {
+#+end_src
+****** A filter
+Let's use our query from before that finds all Munizagas
+#+begin_src typescript
+const Query = datalogUI.query(({ firstName }: { firstName: string }) => {
+    People({ firstName, lastName: "Munizaga" })
+})
+
+const queryView = Query.view()
+
+expect(
+    queryView.readAllData()
+).toEqual(
+    [{ firstName: "Marco" }]
+)
+#+end_src
+
+And now we'll remove Jamie from the table.
+ - Notice how this doesn't result in any new data since Jamie's departure doesn't affect the query.
+#+begin_src typescript
+People.retract({firstName: "Jamie", lastName: "Brandon"})
+expect(
+    queryView.recentData()
+).toEqual(
+    null
+)
+#+end_src
+****** End test scope
+#+begin_src typescript
+})
+#+end_src
+
+
+**** A perfect match for UIs
+UIs often have a stream of new data and need to update the UI to reflect the new data.
+- Perfect match for incremental updates.
+- Uncommon to dump all old data and load new data.
+
+** What DatalogUI Enables
+*** Simple and fast data transforms.
+I have some data state format X and I want to transform it into some presentation format Y.
+
+**** Generic Chat
+  #+begin_src typescript :tangle no
+type Messages = Record<MessageID, {
+    message: string
+    from: UserID
+}>
+
+type Users = Record<UserID, {
+    username: string,
+    youFollow: bool,
+}>
+
+type ChatChannel = Record<UserID, {
+    users: Array<UserID>,
+    messages: Array<MessageID>
+}>
+
+// Common manual transform to render chat channel
+
+// The data type that the UI component expects
+type MessageUI = {
+    message: String
+    fromUsername: string
+    youFollow: bool
+}
+type ChatChannelUI = {
+    messages: Array<MessageUI>
+}
+
+const chatMessages = state.chatChannel[currentChannelID].messages.map(msgID => {
+    const msg = state.messages[msgID]
+    const user = state.users[msg.from]
+    return {
+        message: msg.message,
+        fromUsername: user.username
+        youFollow: user.youFollow
+    }
+})
+
+render({messages: chatMessages})
+  #+end_src
+
+  Note that whenever the state changes we have to redo this whole work. We rely on the vdom-diffing (in the case of React) to avoid excess DOM manipulation.
+
+  /Astute viewers will notice that the above is essentially denormalizing the data/
+***** A DatalogUI Approach
+What would the DatalogUI look like?
+#+begin_src typescript :tangle no
+// Assume the state is in DatalogUI Tables
+const chatMessagesQuery = datalogUI.query(({ message, fromUsername, youFollow, messageID, fromUserID }: MessageUI & {messageID: MessageID, fromUserID: UserID}) => {
+    ChatChannel({id: currentChannelID, messageID })
+    Messages({ messageID, message, from: fromUserID })
+    Users({ id: fromUserID, username: fromUsername })
+})
+
+render(chatMessagesQuery)
+#+end_src
+
+~render~ can make use of DatalogUI's diffs and only do the bare minimum work needed.
+
+
+**** Querying queries
+- Observables can compose nicely
+- Queries can too!
+***** Example
+#+begin_src javascript :tangle no
+const TimelineQuery = TimelineQueryFn(username)
+const posts = useQuery(TimelineQuery).map(({follows, content, messageID}) => {
+    return <p key={messageID}> {follows}: {content}</p>
+})
+
+const unreadCount = useQuery(({messageID}) => {
+    TimelineQuery({messageID})
+    UnreadPosts({messageID})
+}).length
+const pluralized = unreadCount === 1 ? 'post' : 'posts'
+#+end_src
+
+**** TodoList
+#+begin_src typescript :tangle no
+const TodoListApp = () => {
+  const todos = useQuery(({ id, text, isCompleted }: TodoInterface) => {
+    Todos({ id, text, isCompleted })
+  })
+  // ... handle helpers
+  return (
+    <div className="todo-list-app">
+      <TodoList
+        todos={todos}
+        handleTodoUpdate={handleTodoUpdate}
+        handleTodoRemove={handleTodoRemove}
+        handleTodoComplete={handleTodoComplete}
+      />
+    </div>
+  )
+}
+
+#+end_src
+[[https://github.com/datalogui/todo-list-example/blob/master/src/index.tsx][Full Example]]
+
+
+**** More complex examples
+***** Recursive Queries
+Sometimes you want to have a query that can feed its output into itself and build the result from there. A simple example is the checking if a graph is connected. DatalogUI has experimental support for this with ~implies~ and ~mapEffect~.
+
+#+begin_src typescript
+test("recursive queries", () => {
+    // Build our tables
+    // This represents the nodes we've seen in our traversal so far.
+    // We know if a graph is connected if every node is present in this table
+    const Nodes = datalogUI.newTable({
+        node: datalogUI.NumberType,
+    })
+
+    // This represents the edges between nodes
+    // For example {from: 1, to: 2} represents an edge from node 1 to node 2
+    const Edges = datalogUI.newTable({
+        from: datalogUI.NumberType,
+        to: datalogUI.NumberType,
+    })
+
+    // Some initial Edges data
+    const initialEdgesData = [
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [4, 5]
+    ]
+    initialEdgesData.forEach(([from, to]) => {
+        Edges.assert({ from, to })
+    })
+
+    // We'll start the search at node 1. This could be any node
+    const initialNodesData = [
+        [1],
+    ]
+    initialNodesData.forEach(([node]) => {
+        Nodes.assert({ node })
+    })
+
+    const Query = datalogUI.query(({ node, to }) => {
+        Nodes({ node })
+        Edges({ from: node, to })
+    }).implies(({ to }) => {
+        Nodes({ node: to })
+    })
+
+    // We can reach the whole graph
+    expect(
+        Nodes.view().readAllData().map(({node}) => node)
+    ).toEqual(
+        [1,2,3,4,5]
+    )
+})
+#+end_src
+
+see [[https://datalogui.dev/docs/examples/recursive-queries][the docs]] for more details.
+
+***** Bacon Numbers
+#+begin_src typescript
+test("bacon numbers", () => {
+    const InMovie = datalogUI.intoTable([
+        { MovieName: "Change of Habit", Actor: "Elvis Presley" },
+        { MovieName: "Change of Habit", Actor: "Edward Asner" },
+        { MovieName: "Change of Habit", Actor: "Mary Tyler Moore" },
+        { MovieName: "Wild Things", Actor: "Robert Wagner" },
+        { MovieName: "JFK", Actor: "Edward Asner" },
+        { MovieName: "JFK", Actor: "Kevin Bacon" },
+        { MovieName: "Wild Things", Actor: "Kevin Bacon" },
+        // ... More Movies
+    ])
+    const BaconNumbers = datalogUI.intoTable([
+        { Actor: "Kevin Bacon", number: 0 },
+    ])
+
+    // Initialize all actors with a bacon number of infinity
+    datalogUI.query(({ BaconNumber, Actor, NextActor, MovieName }) => {
+        InMovie({ Actor })
+        BaconNumbers.not({ Actor })
+    }).view().readAllData().map(({ Actor }) => {
+        BaconNumbers.assert({ Actor, number: Infinity })
+    })
+
+    const BaconNumberQuery = datalogUI.query(({ BaconNumber, Actor, NextActor, CurrentBaconNumber, MovieName }) => {
+        InMovie({ Actor, MovieName })
+        InMovie({ MovieName, Actor: NextActor })
+        BaconNumbers({ Actor, number: BaconNumber })
+        BaconNumbers({ Actor: NextActor, number: CurrentBaconNumber })
+    })
+
+    BaconNumberQuery.viewExt()
+        .mapEffect((recentDatum) => {
+            // If it's a join on the same actor, we'll pass
+            if (recentDatum.datum.Actor === recentDatum.datum.NextActor) {
+                return
+            }
+            switch (recentDatum.kind) {
+                case datalogUI.Added: {
+                    const {
+                        NextActor: Actor,
+                        BaconNumber,
+                        CurrentBaconNumber,
+                    } = recent
+Datum.datum
+
+                    if (CurrentBaconNumber > BaconNumber + 1) {
+                        // We found a smaller bacon number. Let's swap out the datum
+                        BaconNumbers.retract({ Actor, number: CurrentBaconNumber })
+                        BaconNumbers.assert({ Actor, number: BaconNumber + 1 })
+                    }
+                    break
+                }
+                    // Ignoring this for now
+                case datalogUI.Removed:
+                    break;
+                case datalogUI.Modified:
+                    throw new Error(
+                        "Unhandled. We don't expect queries to give us a modified change."
+                    )
+            }
+        })
+        .onChange(() => {
+            // After we've mapped the effect, we'll run the query again to
+            // update our results
+            BaconNumberQuery.runQuery()
+        })
+
+    expect(
+        BaconNumbers.view().readAllData()
+    ).toEqual(
+        [{"Actor": "Edward Asner", "number": 1}, {"Actor": "Elvis Presley", "number": 2}, {"Actor": "Kevin Bacon", "number": 0}, {"Actor": "Mary Tyler Moore", "number": 2}, {"Actor": "Robert Wagner", "number": 1}]
+
+    )
+})
+#+end_src
+
+** Bugs
+- ~.not~ queries can be finicky
+- ~.implies~ can be confusing (and may have bugs)
+
+** Future work
+- Replace core with [[http://github.com/jamii/dida][dida]]
+  - Faster
+  - Probably more correct
+- Add helpers to render Ui components directly (Drop React)
